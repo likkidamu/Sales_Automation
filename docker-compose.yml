@@ -1,0 +1,68 @@
+version: '3'
+
+services:
+  # Zookeeper service (required by Kafka)
+  zookeeper:
+    image: wurstmeister/zookeeper:3.4.6
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - app_network
+
+  # Kafka service
+  kafka:
+    image: wurstmeister/kafka:latest
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_NAMES: INSIDE,OUTSIDE
+      KAFKA_LISTENER_SSL_PORT: 9093
+      KAFKA_LISTENER_PORT: 9092
+      KAFKA_LISTENER_INTERNAL: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_MODE: 0
+      KAFKA_LISTENER_INTERNAL_PORT: 9093
+      KAFKA_ADVERTISED_LISTENER_PORT: 9092
+    ports:
+      - "9092:9092"  # Exposes the Kafka port for external access
+      - "9093:9093"  # Internal communication port
+    depends_on:
+      - zookeeper
+    networks:
+      - app_network
+
+  # InfluxDB service
+  influxdb:
+    image: influxdb:2.0
+    environment:
+      INFLUXDB_DB: "hubspot_data"
+      INFLUXDB_ADMIN_USER: "admin"
+      INFLUXDB_ADMIN_PASSWORD: "password"
+      INFLUXDB_HTTP_BIND_ADDRESS: ":8086"
+    ports:
+      - "8086:8086"  # InfluxDB HTTP API
+    networks:
+      - app_network
+
+  # Flask app for receiving webhooks
+  flask_app:
+    build: ./flask_app  # Build your Flask app from the Dockerfile in the 'flask_app' directory
+    environment:
+      - FLASK_ENV=development
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=your_influxdb_token
+      - INFLUXDB_BUCKET=hubspot_data
+      - INFLUXDB_ORG=your_org
+    ports:
+      - "5000:5000"  # Exposes Flask app on port 5000
+    depends_on:
+      - kafka
+      - influxdb
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
